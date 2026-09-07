@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shot Tracker</title>
+    <meta
+      name="description"
+      content="A simple mobile-friendly tracker for names, dosage amounts, and last shot dates."
+    />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="topbar" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">Local records</p>
+          <h1 id="page-title">Shot Tracker</h1>
+        </div>
+        <div class="total-pill" aria-live="polite">
+          <span id="record-count">0</span>
+          <span>saved</span>
+        </div>
+      </section>
+
+      <section class="panel entry-panel" aria-labelledby="form-title">
+        <div class="section-heading">
+          <h2 id="form-title">Add a record</h2>
+          <button class="ghost-button hidden" id="cancel-edit" type="button">
+            Cancel
+          </button>
+        </div>
+
+        <form id="shot-form" autocomplete="off">
+          <label for="person-name">
+            Name
+            <input
+              id="person-name"
+              name="personName"
+              type="text"
+              placeholder="Person's name"
+              required
+            />
+          </label>
+
+          <label for="dosage-amount">
+            Dosage amount
+            <input
+              id="dosage-amount"
+              name="dosageAmount"
+              type="text"
+              placeholder="Example: 0.5 mL"
+              required
+            />
+          </label>
+
+          <label for="last-date">
+            Last had it
+            <input id="last-date" name="lastDate" type="datetime-local" required />
+          </label>
+
+          <button class="primary-button" id="submit-button" type="submit">
+            Save record
+          </button>
+        </form>
+      </section>
+
+      <section class="records-tools" aria-label="Record tools">
+        <label class="search-label" for="record-search">
+          <span class="sr-only">Search records</span>
+          <input id="record-search" type="search" placeholder="Search by name" />
+        </label>
+        <button class="ghost-button" id="clear-all" type="button">
+          Clear all
+        </button>
+      </section>
+
+      <section class="records" aria-labelledby="records-title">
+        <div class="section-heading">
+          <h2 id="records-title">Records</h2>
+          <p id="last-updated">No records yet</p>
+        </div>
+        <div id="empty-state" class="empty-state">
+          <strong>No shots tracked yet.</strong>
+          <span>Add the first record above.</span>
+        </div>
+        <div id="record-list" class="record-list"></div>
+      </section>
+
+      <p class="fine-print">
+        Records stay in this browser. For medical decisions, follow guidance from
+        a licensed clinician.
+      </p>
+    </main>
+
+    <template id="record-template">
+      <article class="record-card">
+        <div class="record-main">
+          <div>
+            <h3></h3>
+            <p class="dosage"></p>
+          </div>
+          <span class="time-badge"></span>
+        </div>
+        <p class="date-line"></p>
+        <div class="card-actions">
+          <button class="edit-button" type="button">Edit</button>
+          <button class="delete-button" type="button">Delete</button>
+        </div>
+      </article>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
