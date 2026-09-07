@@ -6,7 +6,7 @@
     <title>Shot Tracker</title>
     <meta
       name="description"
-      content="A simple mobile-friendly tracker for names, dosage amounts, and last shot dates."
+      content="A simple mobile-friendly tracker for names, dosage amounts, last shot dates, and optional due dates."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -48,15 +48,41 @@
             <input
               id="dosage-amount"
               name="dosageAmount"
-              type="text"
-              placeholder="Example: 0.5 mL"
+              type="number"
+              min="0"
+              step="any"
+              inputmode="decimal"
+              placeholder="Example: 0.5"
               required
             />
+          </label>
+
+          <label for="dosage-unit">
+            Unit
+            <select id="dosage-unit" name="dosageUnit" required>
+              <option value="mL">mL</option>
+              <option value="mg">mg</option>
+              <option value="units">units</option>
+              <option value="other">other</option>
+            </select>
           </label>
 
           <label for="last-date">
             Last had it
             <input id="last-date" name="lastDate" type="datetime-local" required />
+          </label>
+
+          <label for="repeat-days">
+            Repeat every
+            <input
+              id="repeat-days"
+              name="repeatDays"
+              type="number"
+              min="1"
+              step="1"
+              inputmode="numeric"
+              placeholder="Optional days"
+            />
           </label>
 
           <button class="primary-button" id="submit-button" type="submit">
@@ -70,9 +96,23 @@
           <span class="sr-only">Search records</span>
           <input id="record-search" type="search" placeholder="Search by name" />
         </label>
-        <button class="ghost-button" id="clear-all" type="button">
-          Clear all
-        </button>
+        <div class="records-actions">
+          <button class="ghost-button" id="export-records" type="button">
+            Export
+          </button>
+          <button class="ghost-button" id="import-records" type="button">
+            Import
+          </button>
+          <button class="danger-button" id="clear-all" type="button">
+            Clear all
+          </button>
+          <input
+            id="import-file"
+            class="sr-only"
+            type="file"
+            accept="application/json,.json"
+          />
+        </div>
       </section>
 
       <section class="records" aria-labelledby="records-title">
@@ -93,21 +133,31 @@
       </p>
     </main>
 
-    <template id="record-template">
-      <article class="record-card">
-        <div class="record-main">
+    <template id="person-template">
+      <article class="person-card">
+        <div class="person-header">
           <div>
             <h3></h3>
-            <p class="dosage"></p>
+            <p class="person-summary"></p>
           </div>
           <span class="time-badge"></span>
+        </div>
+        <div class="history-list"></div>
+      </article>
+    </template>
+
+    <template id="shot-template">
+      <section class="shot-row">
+        <div class="shot-details">
+          <p class="dosage"></p>
+          <p class="due-line"></p>
         </div>
         <p class="date-line"></p>
         <div class="card-actions">
           <button class="edit-button" type="button">Edit</button>
           <button class="delete-button" type="button">Delete</button>
         </div>
-      </article>
+      </section>
     </template>
 
     <script src="app.js"></script>

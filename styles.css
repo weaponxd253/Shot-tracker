@@ -30,7 +30,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -143,7 +144,8 @@ label {
   font-weight: 700;
 }
 
-input {
+input,
+select {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 0.45rem;
@@ -158,7 +160,8 @@ input {
     background 160ms ease;
 }
 
-input:focus {
+input:focus,
+select:focus {
   border-color: var(--accent);
   background: #ffffff;
   box-shadow: 0 0 0 0.2rem rgba(15, 123, 114, 0.16);
@@ -166,6 +169,7 @@ input:focus {
 
 .primary-button,
 .ghost-button,
+.danger-button,
 .card-actions button {
   min-height: 2.75rem;
   border-radius: 0.45rem;
@@ -184,6 +188,7 @@ input:focus {
 }
 
 .ghost-button,
+.danger-button,
 .card-actions button {
   background: #ffffff;
   border-color: var(--line);
@@ -197,16 +202,26 @@ input:focus {
   color: var(--accent-dark);
 }
 
-.hidden {
-  display: none;
+.danger-button {
+  color: var(--danger);
+}
+
+.danger-button:hover {
+  background: var(--danger-soft);
+  border-color: #fecdca;
 }
 
 .records-tools {
   display: grid;
-  grid-template-columns: 1fr auto;
   gap: 0.7rem;
   align-items: end;
   margin: 1rem 0;
+}
+
+.records-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
 }
 
 .search-label {
@@ -232,12 +247,17 @@ input:focus {
   color: var(--ink);
 }
 
+.hidden,
+.empty-state.hidden {
+  display: none;
+}
+
 .record-list {
   display: grid;
   gap: 0.8rem;
 }
 
-.record-card {
+.person-card {
   display: grid;
   gap: 0.8rem;
   border: 1px solid var(--line);
@@ -246,22 +266,52 @@ input:focus {
   padding: 1rem;
 }
 
-.record-main {
+.person-header {
   display: flex;
   justify-content: space-between;
   gap: 0.9rem;
 }
 
-.record-card h3 {
+.person-card h3 {
   overflow-wrap: anywhere;
   font-size: 1.15rem;
   line-height: 1.25;
 }
 
-.dosage {
+.person-summary {
   margin-top: 0.25rem;
   color: var(--muted);
+  font-size: 0.9rem;
   font-weight: 700;
+}
+
+.history-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.shot-row {
+  display: grid;
+  gap: 0.7rem;
+  border-top: 1px solid var(--line);
+  padding-top: 0.85rem;
+}
+
+.shot-row:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.shot-details {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.dosage {
+  color: var(--ink);
+  font-weight: 850;
 }
 
 .time-badge {
@@ -281,6 +331,27 @@ input:focus {
 .date-line {
   color: #455359;
   font-size: 0.95rem;
+}
+
+.due-line {
+  border-radius: 999px;
+  background: #eef6f4;
+  color: var(--accent-dark);
+  font-size: 0.8rem;
+  font-weight: 800;
+  line-height: 1.2;
+  padding: 0.35rem 0.55rem;
+  text-align: right;
+}
+
+.due-line.overdue {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.due-line.due-today {
+  background: #fff4d6;
+  color: #7a4e00;
 }
 
 .card-actions {
@@ -324,16 +395,33 @@ input:focus {
   }
 
   form {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
-  label[for="last-date"],
+  label[for="person-name"] {
+    grid-column: span 6;
+  }
+
+  label[for="dosage-amount"],
+  label[for="last-date"] {
+    grid-column: span 4;
+  }
+
+  label[for="dosage-unit"],
+  label[for="repeat-days"] {
+    grid-column: span 2;
+  }
+
   .primary-button {
     grid-column: 1 / -1;
   }
 
-  .record-list {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .records-tools {
+    grid-template-columns: 1fr auto;
+  }
+
+  .records-actions {
+    grid-template-columns: repeat(3, auto);
   }
 }
 
@@ -354,7 +442,8 @@ input:focus {
     grid-template-columns: 1fr;
   }
 
-  .record-main {
+  .person-header,
+  .shot-details {
     display: grid;
   }
 
