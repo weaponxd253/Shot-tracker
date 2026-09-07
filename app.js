@@ -111,23 +111,11 @@ exportButton.addEventListener("click", () => {
     return;
   }
 
-  const payload = {
-    app: "shot-tracker",
-    exportedAt: new Date().toISOString(),
-    records,
-  };
-  const backup = new Blob([JSON.stringify(payload, null, 2)], {
-    type: "application/json",
+  downloadFile({
+    content: recordsToCsv(records),
+    filename: `shot-tracker-sheet-${new Date().toISOString().slice(0, 10)}.csv`,
+    type: "text/csv;charset=utf-8",
   });
-  const url = URL.createObjectURL(backup);
-  const link = document.createElement("a");
-
-  link.href = url;
-  link.download = `shot-tracker-backup-${new Date().toISOString().slice(0, 10)}.json`;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
 });
 
 importButton.addEventListener("click", () => {
@@ -143,32 +131,28 @@ importFileInput.addEventListener("change", () => {
   const reader = new FileReader();
   reader.addEventListener("load", () => {
     try {
-      const parsed = JSON.parse(reader.result);
-      const importedRecords = Array.isArray(parsed) ? parsed : parsed.records;
+      const importedRecords = file.name.toLowerCase().endsWith(".csv")
+        ? csvToRecords(reader.result)
+        : jsonToRecords(reader.result);
 
       if (!Array.isArray(importedRecords)) {
         throw new Error("Backup does not contain records.");
       }
 
-      const existingIds = new Set(records.map((record) => record.id));
-      const normalizedRecords = importedRecords.map((record) => {
-        const normalizedRecord = normalizeRecord(record);
-        normalizedRecord.id = uniqueId(existingIds, normalizedRecord.id);
-        return normalizedRecord;
-      });
+      const normalizedRecords = normalizeImportedRecords(importedRecords);
 
       if (!normalizedRecords.length) {
         throw new Error("Backup is empty.");
       }
 
-      records = [...normalizedRecords, ...records].sort(sortByLastDateDesc);
+      records = mergeRecords(normalizedRecords, records);
       saveRecords();
       editingId = null;
       resetForm();
       renderRecords();
       window.alert(`${normalizedRecords.length} record(s) imported.`);
     } catch {
-      window.alert("That backup file could not be imported.");
+      window.alert("That file could not be imported.");
     } finally {
       importFileInput.value = "";
     }
@@ -237,6 +221,194 @@ function saveRecords(options = {}) {
     }
     return false;
   }
+}
+
+function recordsToCsv(items) {
+  const headers = [
+    "Name",
+    "Dosage Amount",
+    "Unit",
+    "Last Had It",
+    "Repeat Every Days",
+    "Due Status",
+    "Record ID",
+  ];
+  const rows = [...items].sort(sortByLastDateDesc).map((record) => [
+    record.personName,
+    record.dosageAmount,
+    record.dosageUnit === "other" ? "" : record.dosageUnit,
+    formatSpreadsheetDate(record.lastDate),
+    record.repeatDays || "",
+    getDueInfo(record)?.text || "",
+    record.id,
+  ]);
+
+  return `\ufeff${[headers, ...rows].map(csvRow).join("\r\n")}`;
+}
+
+function csvRow(row) {
+  return row.map(csvCell).join(",");
+}
+
+function csvCell(value) {
+  const text = safeSpreadsheetValue(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function safeSpreadsheetValue(value) {
+  const text = cleanString(value);
+  return /^[=+\-@]/.test(text) ? `'${text}` : text;
+}
+
+function stripSpreadsheetGuard(value) {
+  const text = cleanString(value);
+  return /^'[=+\-@]/.test(text) ? text.slice(1) : text;
+}
+
+function downloadFile({ content, filename, type }) {
+  const file = new Blob([content], { type });
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function jsonToRecords(content) {
+  const parsed = JSON.parse(content);
+  const importedRecords = Array.isArray(parsed) ? parsed : parsed.records;
+  return Array.isArray(importedRecords) ? importedRecords : null;
+}
+
+function csvToRecords(content) {
+  const rows = parseCsv(content.replace(/^\ufeff/, ""));
+
+  if (rows.length < 2) {
+    return [];
+  }
+
+  const fields = rows[0].map(csvHeaderToField);
+  return rows
+    .slice(1)
+    .filter((row) => row.some((cell) => cleanString(cell)))
+    .map((row) => {
+      const record = {};
+
+      fields.forEach((field, index) => {
+        if (field) {
+          record[field] = stripSpreadsheetGuard(row[index]);
+        }
+      });
+
+      if (record.lastDate) {
+        record.lastDate = parseSpreadsheetDate(record.lastDate);
+      }
+
+      return record;
+    });
+}
+
+function parseCsv(content) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index];
+    const nextChar = content[index + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        field += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      row.push(field);
+      field = "";
+    } else if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && nextChar === "\n") {
+        index += 1;
+      }
+      row.push(field);
+      rows.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += char;
+    }
+  }
+
+  if (field || row.length) {
+    row.push(field);
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function csvHeaderToField(header) {
+  const normalizedHeader = cleanString(header).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const fields = {
+    name: "personName",
+    personname: "personName",
+    dosageamount: "dosageAmount",
+    dose: "dosageAmount",
+    dosage: "dosageAmount",
+    unit: "dosageUnit",
+    lasthadit: "lastDate",
+    lastdate: "lastDate",
+    repeaterydays: "repeatDays",
+    repeateveryday: "repeatDays",
+    repeateverydays: "repeatDays",
+    repeatdays: "repeatDays",
+    recordid: "id",
+    id: "id",
+  };
+
+  return fields[normalizedHeader] || "";
+}
+
+function normalizeImportedRecords(importedRecords) {
+  const importedIds = new Set();
+
+  return importedRecords.map((record) => {
+    const normalizedRecord = normalizeRecord(record);
+    normalizedRecord.id = uniqueId(importedIds, normalizedRecord.id);
+    return normalizedRecord;
+  });
+}
+
+function mergeRecords(importedRecords, currentRecords) {
+  const importedById = new Map(
+    importedRecords.map((record) => [record.id, record]),
+  );
+  const currentIds = new Set(currentRecords.map((record) => record.id));
+  const mergedRecords = currentRecords.map((record) => {
+    const importedRecord = importedById.get(record.id);
+    return importedRecord
+      ? {
+          ...record,
+          ...importedRecord,
+          createdAt: record.createdAt || importedRecord.createdAt,
+          updatedAt: Date.now(),
+        }
+      : record;
+  });
+
+  importedRecords.forEach((record) => {
+    if (!currentIds.has(record.id)) {
+      mergedRecords.push(record);
+    }
+  });
+
+  return mergedRecords.sort(sortByLastDateDesc);
 }
 
 function renderRecords() {
@@ -510,6 +682,45 @@ function normalizeDateInput(value) {
 function formatDateTimeInput(date) {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return localDate.toISOString().slice(0, 16);
+}
+
+function formatSpreadsheetDate(value) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
+}
+
+function parseSpreadsheetDate(value) {
+  const text = cleanString(value);
+  const localDateTime = text.match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{1,2}):(\d{2})/,
+  );
+
+  if (localDateTime) {
+    const [, year, month, day, hours, minutes] = localDateTime;
+    return formatDateTimeInput(
+      new Date(Number(year), Number(month) - 1, Number(day), Number(hours), Number(minutes)),
+    );
+  }
+
+  const spreadsheetSerialDate = Number(text);
+  if (Number.isFinite(spreadsheetSerialDate) && spreadsheetSerialDate > 20000) {
+    const date = new Date((spreadsheetSerialDate - 25569) * 86400000);
+    return formatDateTimeInput(date);
+  }
+
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? "" : formatDateTimeInput(date);
 }
 
 function isValidDate(value) {

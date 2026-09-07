@@ -224,6 +224,12 @@ select:focus {
   gap: 0.55rem;
 }
 
+.records-actions button {
+  min-width: 0;
+  padding-left: 0.45rem;
+  padding-right: 0.45rem;
+}
+
 .search-label {
   font-size: 1rem;
 }
