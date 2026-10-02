@@ -404,7 +404,8 @@ select:focus {
     grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
-  label[for="person-name"] {
+  label[for="person-name"],
+  label[for="custom-unit"] {
     grid-column: span 6;
   }
 
