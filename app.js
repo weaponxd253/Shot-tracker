@@ -1,13 +1,49 @@
 const storageKey = "shot-tracker-records";
 
+// Suggestions for the medication field. Defaults only fill fields the user
+// hasn't set yet; they are not dosing advice.
+const medicationPresets = [
+  { name: "Ozempic (semaglutide)", unit: "mg", repeatDays: 7 },
+  { name: "Wegovy (semaglutide)", unit: "mg", repeatDays: 7 },
+  { name: "Mounjaro (tirzepatide)", unit: "mg", repeatDays: 7 },
+  { name: "Zepbound (tirzepatide)", unit: "mg", repeatDays: 7 },
+  { name: "Trulicity (dulaglutide)", unit: "mg", repeatDays: 7 },
+  { name: "Saxenda (liraglutide)", unit: "mg", repeatDays: 1 },
+  { name: "Victoza (liraglutide)", unit: "mg", repeatDays: 1 },
+  { name: "Semaglutide (compounded)", unit: "mg", repeatDays: 7 },
+  { name: "Tirzepatide (compounded)", unit: "mg", repeatDays: 7 },
+  { name: "Insulin", unit: "units", repeatDays: null },
+  { name: "Vitamin B12", unit: "mL", repeatDays: null },
+  { name: "Testosterone", unit: "mL", repeatDays: null },
+];
+const injectionSites = [
+  "Abdomen – left",
+  "Abdomen – right",
+  "Thigh – left",
+  "Thigh – right",
+  "Upper arm – left",
+  "Upper arm – right",
+];
+
 const form = document.querySelector("#shot-form");
+const entryPanel = document.querySelector("#entry-panel");
+const formTitle = document.querySelector("#form-title");
 const personNameInput = document.querySelector("#person-name");
+const medicationInput = document.querySelector("#medication");
+const medicationOptions = document.querySelector("#medication-options");
 const dosageAmountInput = document.querySelector("#dosage-amount");
 const dosageUnitInput = document.querySelector("#dosage-unit");
 const customUnitInput = document.querySelector("#custom-unit");
 const customUnitLabel = document.querySelector("#custom-unit-label");
+const doseCalculator = document.querySelector("#dose-calculator");
+const concentrationInput = document.querySelector("#concentration");
+const drawResult = document.querySelector("#draw-result");
 const lastDateInput = document.querySelector("#last-date");
+const siteInput = document.querySelector("#injection-site");
+const siteHint = document.querySelector("#site-hint");
+const scheduleOptions = document.querySelector("#schedule-options");
 const repeatDaysInput = document.querySelector("#repeat-days");
+const notesInput = document.querySelector("#notes");
 const submitButton = document.querySelector("#submit-button");
 const cancelEditButton = document.querySelector("#cancel-edit");
 const clearAllButton = document.querySelector("#clear-all");
@@ -19,20 +55,29 @@ const recordList = document.querySelector("#record-list");
 const emptyState = document.querySelector("#empty-state");
 const recordCount = document.querySelector("#record-count");
 const lastUpdated = document.querySelector("#last-updated");
+const upNextPanel = document.querySelector("#up-next");
+const upNextList = document.querySelector("#up-next-list");
 const personTemplate = document.querySelector("#person-template");
 const shotTemplate = document.querySelector("#shot-template");
+const upNextTemplate = document.querySelector("#up-next-template");
 
 let records = loadRecords();
 let editingId = null;
+// Medication defaults fill each field at most once and never override a
+// choice the user already made.
+let appliedPresetName = "";
+let unitChosen = false;
+let scheduleChosen = false;
 
 saveRecords({ alertOnError: false });
-setDefaultDate();
+resetForm();
 renderRecords();
 
 form.addEventListener("submit", (event) => {
   event.preventDefault();
 
   const personName = personNameInput.value.trim();
+  const medication = cleanString(medicationInput.value);
   const dosageAmount = normalizeAmount(dosageAmountInput.value);
   const dosageUnit =
     dosageUnitInput.value === "other"
@@ -64,10 +109,14 @@ form.addEventListener("submit", (event) => {
 
   const recordData = {
     personName,
+    medication,
     dosageAmount,
     dosageUnit,
+    concentration: dosageUnit === "mg" ? normalizeConcentration(concentrationInput.value) : null,
     lastDate,
+    site: cleanString(siteInput.value),
     repeatDays,
+    notes: cleanString(notesInput.value),
     updatedAt: Date.now(),
   };
 
@@ -89,7 +138,32 @@ form.addEventListener("submit", (event) => {
   renderRecords();
 });
 
-dosageUnitInput.addEventListener("change", updateCustomUnitVisibility);
+dosageUnitInput.addEventListener("change", () => {
+  unitChosen = true;
+  updateUnitFields();
+  updateDrawResult();
+});
+dosageAmountInput.addEventListener("input", updateDrawResult);
+concentrationInput.addEventListener("input", updateDrawResult);
+repeatDaysInput.addEventListener("input", () => {
+  scheduleChosen = true;
+  updateScheduleChips();
+});
+personNameInput.addEventListener("input", updateSiteHint);
+
+medicationInput.addEventListener("input", applyMedicationDefaults);
+medicationInput.addEventListener("change", updateSiteHint);
+
+scheduleOptions.addEventListener("click", (event) => {
+  const chip = event.target.closest("[data-days]");
+  if (!chip) {
+    return;
+  }
+
+  repeatDaysInput.value = chip.dataset.days;
+  scheduleChosen = true;
+  updateScheduleChips();
+});
 
 cancelEditButton.addEventListener("click", () => {
   editingId = null;
@@ -174,7 +248,10 @@ importFileInput.addEventListener("change", () => {
 
 searchInput.addEventListener("input", renderRecords);
 
-recordList.addEventListener("click", (event) => {
+recordList.addEventListener("click", handleRecordAction);
+upNextList.addEventListener("click", handleRecordAction);
+
+function handleRecordAction(event) {
   const button = event.target.closest("button");
   const row = event.target.closest("[data-id]");
 
@@ -187,20 +264,29 @@ recordList.addEventListener("click", (event) => {
     return;
   }
 
+  if (button.classList.contains("log-next-button")) {
+    startNextDose(record);
+  }
+
   if (button.classList.contains("edit-button")) {
     editingId = record.id;
-    personNameInput.value = record.personName;
-    dosageAmountInput.value = record.dosageAmount;
-    dosageUnitInput.value = knownUnit(record.dosageUnit) ? record.dosageUnit : "other";
-    customUnitInput.value = knownUnit(record.dosageUnit) ? "" : record.dosageUnit;
-    updateCustomUnitVisibility();
+    fillForm(record);
     lastDateInput.value = normalizeDateInput(record.lastDate);
-    repeatDaysInput.value = record.repeatDays || "";
+    siteInput.value = record.site;
+    notesInput.value = record.notes;
+    siteHint.textContent = "";
     setFormMode("edit");
-    personNameInput.focus();
+    focusForm(personNameInput);
   }
 
   if (button.classList.contains("delete-button")) {
+    const confirmed = window.confirm(
+      `Delete the ${formatDosage(record)} dose from ${formatDate(record.lastDate)}?`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
     records = records.filter((item) => item.id !== record.id);
     if (editingId === record.id) {
       editingId = null;
@@ -209,7 +295,147 @@ recordList.addEventListener("click", (event) => {
     saveRecords();
     renderRecords();
   }
-});
+}
+
+// Prefills the form from the latest dose so a repeat dose takes one tap.
+function startNextDose(record) {
+  editingId = null;
+  resetForm();
+  fillForm(record);
+  updateSiteHint({ select: true });
+  setFormMode("next");
+  focusForm(dosageAmountInput);
+}
+
+function fillForm(record) {
+  personNameInput.value = record.personName;
+  medicationInput.value = record.medication;
+  dosageAmountInput.value = record.dosageAmount;
+  dosageUnitInput.value = knownUnit(record.dosageUnit) ? record.dosageUnit : "other";
+  customUnitInput.value = knownUnit(record.dosageUnit) ? "" : record.dosageUnit;
+  concentrationInput.value = record.concentration || "";
+  repeatDaysInput.value = record.repeatDays || "";
+  doseCalculator.open = Boolean(record.concentration);
+  appliedPresetName = findMedicationPreset(record.medication)?.name || "";
+  unitChosen = true;
+  scheduleChosen = true;
+  updateUnitFields();
+  updateDrawResult();
+  updateScheduleChips();
+}
+
+function focusForm(input) {
+  entryPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  input.focus({ preventScroll: true });
+}
+
+function applyMedicationDefaults() {
+  const preset = findMedicationPreset(medicationInput.value);
+  if (!preset || preset.name === appliedPresetName) {
+    return;
+  }
+
+  appliedPresetName = preset.name;
+
+  if (!unitChosen) {
+    dosageUnitInput.value = preset.unit;
+    updateUnitFields();
+    updateDrawResult();
+  }
+
+  if (!scheduleChosen && preset.repeatDays) {
+    repeatDaysInput.value = preset.repeatDays;
+    updateScheduleChips();
+  }
+
+  updateSiteHint();
+}
+
+function findMedicationPreset(value) {
+  const name = cleanString(value).toLowerCase();
+  return medicationPresets.find((preset) => preset.name.toLowerCase() === name);
+}
+
+function updateUnitFields() {
+  customUnitLabel.classList.toggle("hidden", dosageUnitInput.value !== "other");
+  doseCalculator.classList.toggle("hidden", dosageUnitInput.value !== "mg");
+}
+
+// Converts a mg dose to the volume to draw, and to U-100 insulin syringe
+// markings (100 units = 1 mL), for vials labelled in mg/mL.
+function updateDrawResult() {
+  const dose = Number.parseFloat(dosageAmountInput.value);
+  const concentration = normalizeConcentration(concentrationInput.value);
+
+  if (!(dose > 0) || !concentration) {
+    drawResult.textContent = "Enter the dose and vial strength to see how much to draw.";
+    drawResult.classList.remove("ready");
+    return;
+  }
+
+  const volume = dose / concentration;
+  drawResult.textContent = `Draw ${formatNumber(volume, 3)} mL = ${formatNumber(
+    volume * 100,
+    1,
+  )} units on a U-100 insulin syringe`;
+  drawResult.classList.add("ready");
+}
+
+function updateScheduleChips() {
+  const days = normalizeRepeatDays(repeatDaysInput.value);
+  scheduleOptions.querySelectorAll("[data-days]").forEach((chip) => {
+    const chipDays = normalizeRepeatDays(chip.dataset.days);
+    chip.setAttribute("aria-pressed", String(chipDays === days));
+  });
+}
+
+// Suggests the injection site this person used least recently for this
+// medication, so sites rotate.
+function updateSiteHint({ select = false } = {}) {
+  if (editingId) {
+    return;
+  }
+
+  const suggestion = suggestNextSite(personNameInput.value, medicationInput.value);
+  if (!suggestion) {
+    siteHint.textContent = "";
+    return;
+  }
+
+  siteHint.textContent = suggestion.lastSite
+    ? `Suggested: ${suggestion.site} (last used ${suggestion.lastSite})`
+    : `Suggested: ${suggestion.site}`;
+
+  if (select || !siteInput.value) {
+    siteInput.value = suggestion.site;
+  }
+}
+
+function suggestNextSite(personName, medication) {
+  const key = groupKey({ personName, medication });
+  const history = records
+    .filter((record) => groupKey(record) === key && record.site)
+    .sort(sortByLastDateDesc);
+
+  if (!history.length) {
+    return null;
+  }
+
+  const lastUsed = new Map();
+  history.forEach((record, index) => {
+    if (!lastUsed.has(record.site)) {
+      lastUsed.set(record.site, index);
+    }
+  });
+
+  const [site] = [...injectionSites].sort((first, second) => {
+    const firstAge = lastUsed.has(first) ? lastUsed.get(first) : history.length;
+    const secondAge = lastUsed.has(second) ? lastUsed.get(second) : history.length;
+    return secondAge - firstAge;
+  });
+
+  return { site, lastSite: history[0].site };
+}
 
 function loadRecords() {
   try {
@@ -269,27 +495,37 @@ function recordsToXlsx(items) {
 }
 
 function spreadsheetRows(items) {
-  const headers = [
-    "Name",
-    "Dosage Amount",
-    "Unit",
-    "Last Had It",
-    "Repeat Every Days",
-    "Due Status",
-    "Record ID",
-  ];
+  const headers = spreadsheetColumns.map((column) => column.header);
   const rows = [...items].sort(sortByLastDateDesc).map((record) => [
     record.personName,
+    record.medication,
     record.dosageAmount,
     record.dosageUnit === "other" ? "" : record.dosageUnit,
+    record.concentration || "",
     formatSpreadsheetDate(record.lastDate),
+    record.site,
     record.repeatDays || "",
     getDueInfo(record)?.text || "",
+    record.notes,
     record.id,
   ]);
 
   return [headers, ...rows];
 }
+
+const spreadsheetColumns = [
+  { header: "Name", width: 22 },
+  { header: "Medication", width: 26 },
+  { header: "Dosage Amount", width: 15 },
+  { header: "Unit", width: 10 },
+  { header: "Concentration (mg/mL)", width: 14 },
+  { header: "Last Had It", width: 19 },
+  { header: "Injection Site", width: 18 },
+  { header: "Repeat Every Days", width: 14 },
+  { header: "Due Status", width: 22 },
+  { header: "Notes", width: 36 },
+  { header: "Record ID", width: 34, hidden: true },
+];
 
 function contentTypesXml() {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -395,7 +631,13 @@ function stylesXml() {
 
 function worksheetXml(rows) {
   const lastRow = Math.max(rows.length, 1);
-  const lastCell = `G${lastRow}`;
+  const lastCell = `${columnName(spreadsheetColumns.length - 1)}${lastRow}`;
+  const colsXml = spreadsheetColumns
+    .map((column, index) => {
+      const hidden = column.hidden ? ' hidden="1"' : "";
+      return `<col min="${index + 1}" max="${index + 1}" width="${column.width}" customWidth="1"${hidden}/>`;
+    })
+    .join("");
   const rowsXml = rows
     .map((row, rowIndex) => {
       const rowNumber = rowIndex + 1;
@@ -417,15 +659,7 @@ function worksheetXml(rows) {
       <selection pane="bottomLeft"/>
     </sheetView>
   </sheetViews>
-  <cols>
-    <col min="1" max="1" width="24" customWidth="1"/>
-    <col min="2" max="2" width="15" customWidth="1"/>
-    <col min="3" max="3" width="12" customWidth="1"/>
-    <col min="4" max="4" width="21" customWidth="1"/>
-    <col min="5" max="5" width="18" customWidth="1"/>
-    <col min="6" max="6" width="22" customWidth="1"/>
-    <col min="7" max="7" width="34" customWidth="1" hidden="1"/>
-  </cols>
+  <cols>${colsXml}</cols>
   <sheetData>${rowsXml}</sheetData>
   <autoFilter ref="A1:${lastCell}"/>
   <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
@@ -898,6 +1132,9 @@ function csvHeaderToField(header) {
   const fields = {
     name: "personName",
     personname: "personName",
+    medication: "medication",
+    medicine: "medication",
+    drug: "medication",
     dosageamount: "dosageAmount",
     dose: "dosageAmount",
     dosage: "dosageAmount",
@@ -908,6 +1145,13 @@ function csvHeaderToField(header) {
     repeateveryday: "repeatDays",
     repeateverydays: "repeatDays",
     repeatdays: "repeatDays",
+    concentrationmgml: "concentration",
+    concentration: "concentration",
+    vialstrength: "concentration",
+    injectionsite: "site",
+    site: "site",
+    notes: "notes",
+    note: "notes",
     recordid: "id",
     id: "id",
   };
@@ -977,7 +1221,7 @@ function mergeRecords(importedRecords, currentRecords) {
 
 function recordContentKey(record) {
   return [
-    record.personName.trim().toLowerCase(),
+    groupKey(record),
     Number(record.dosageAmount) || record.dosageAmount,
     record.dosageUnit.toLowerCase(),
     record.lastDate,
@@ -1010,10 +1254,10 @@ function importSummary({ addedCount, updatedCount, duplicateCount, invalidDateCo
 
 function renderRecords() {
   const searchTerm = searchInput.value.trim().toLowerCase();
-  const visibleRecords = records
-    .filter((record) => record.personName.toLowerCase().includes(searchTerm))
-    .sort(sortByLastDateDesc);
-  const groupedRecords = groupByPerson(visibleRecords);
+  const visibleRecords = records.filter((record) => {
+    return `${record.personName} ${record.medication}`.toLowerCase().includes(searchTerm);
+  });
+  const groups = groupRecords(visibleRecords);
 
   recordList.innerHTML = "";
   recordCount.textContent = records.length;
@@ -1022,52 +1266,139 @@ function renderRecords() {
   exportButton.disabled = records.length === 0;
 
   lastUpdated.textContent = records.length
-    ? `Newest: ${formatDate(recordsSortedByDate()[0].lastDate)}`
-    : "No records yet";
+    ? `Last dose: ${formatDate(recordsSortedByDate()[0].lastDate)}`
+    : "No doses yet";
 
-  groupedRecords.forEach((group) => {
-    const personCard = personTemplate.content.firstElementChild.cloneNode(true);
-    const historyList = personCard.querySelector(".history-list");
-    const shotCount = group.records.length;
+  groups.forEach((group) => {
+    const card = personTemplate.content.firstElementChild.cloneNode(true);
+    const historyList = card.querySelector(".history-list");
+    const latest = group.records[0];
+    const doseCount = group.records.length;
 
-    personCard.querySelector("h3").textContent = group.personName;
-    personCard.querySelector(".person-summary").textContent =
-      `${shotCount} shot${shotCount === 1 ? "" : "s"} saved`;
-    personCard.querySelector(".time-badge").textContent = timeAgo(
-      group.records[0].lastDate,
-    );
+    card.dataset.id = latest.id;
+    card.querySelector(".card-eyebrow").textContent = latest.medication
+      ? latest.personName
+      : "";
+    card.querySelector("h3").textContent = latest.medication || latest.personName;
+    card.querySelector(".person-summary").textContent =
+      `${doseCount} dose${doseCount === 1 ? "" : "s"} · last ${timeAgo(latest.lastDate)}`;
+    setDueBadge(card.querySelector(".due-badge"), getDueInfo(latest));
+    card
+      .querySelector(".log-next-button")
+      .setAttribute("aria-label", `Log next dose of ${groupLabel(latest)}`);
 
-    group.records.forEach((record) => {
-      const shotRow = shotTemplate.content.firstElementChild.cloneNode(true);
-      const dueLine = shotRow.querySelector(".due-line");
-      const due = getDueInfo(record);
+    group.records.forEach((record, index) => {
+      const row = shotTemplate.content.firstElementChild.cloneNode(true);
+      const previous = group.records[index + 1];
+      const doseChange = describeDoseChange(record, previous);
 
-      shotRow.dataset.id = record.id;
-      shotRow.querySelector(".dosage").textContent = `Dose: ${formatDosage(record)}`;
-      shotRow.querySelector(".date-line").textContent = `Last had it: ${formatDate(
-        record.lastDate,
-      )}`;
-
-      if (due) {
-        dueLine.textContent = due.text;
-        dueLine.classList.add(due.status);
-      } else {
-        dueLine.classList.add("hidden");
+      row.dataset.id = record.id;
+      row.querySelector(".dosage").textContent = formatDosage(record);
+      row.querySelector(".date-line").textContent = formatDate(record.lastDate);
+      showText(row.querySelector(".dose-change"), doseChange?.text);
+      if (doseChange) {
+        row.querySelector(".dose-change").classList.add(doseChange.direction);
       }
+      showText(row.querySelector(".site-line"), record.site && `Site: ${record.site}`);
+      showText(row.querySelector(".notes-line"), record.notes);
+      row
+        .querySelector(".edit-button")
+        .setAttribute("aria-label", `Edit dose from ${formatDate(record.lastDate)}`);
+      row
+        .querySelector(".delete-button")
+        .setAttribute("aria-label", `Delete dose from ${formatDate(record.lastDate)}`);
 
-      historyList.append(shotRow);
+      historyList.append(row);
     });
 
-    recordList.append(personCard);
+    recordList.append(card);
   });
+
+  renderUpNext();
 
   if (records.length > 0 && visibleRecords.length === 0) {
     emptyState.querySelector("strong").textContent = "No matching records.";
-    emptyState.querySelector("span").textContent = "Try a different name.";
+    emptyState.querySelector("span").textContent = "Try a different name or medication.";
   } else {
-    emptyState.querySelector("strong").textContent = "No shots tracked yet.";
-    emptyState.querySelector("span").textContent = "Add the first record above.";
+    emptyState.querySelector("strong").textContent = "No doses logged yet.";
+    emptyState.querySelector("span").textContent = "Log the first dose above.";
   }
+}
+
+// Lists the next scheduled dose for each person and medication, soonest first.
+function renderUpNext() {
+  const scheduled = groupRecords(records)
+    .map((group) => ({ record: group.records[0], due: getDueInfo(group.records[0]) }))
+    .filter((item) => item.due)
+    .sort((first, second) => first.due.diffDays - second.due.diffDays);
+
+  upNextList.innerHTML = "";
+  upNextPanel.classList.toggle("hidden", scheduled.length === 0);
+
+  scheduled.forEach(({ record, due }) => {
+    const item = upNextTemplate.content.firstElementChild.cloneNode(true);
+
+    item.dataset.id = record.id;
+    item.querySelector(".up-next-name").textContent = groupLabel(record);
+    item.querySelector(".up-next-detail").textContent =
+      `${formatDosage(record)} · every ${formatRepeat(record.repeatDays)}`;
+    setDueBadge(item.querySelector(".due-badge"), due);
+    item
+      .querySelector(".log-next-button")
+      .setAttribute("aria-label", `Log dose of ${groupLabel(record)}`);
+    upNextList.append(item);
+  });
+}
+
+function setDueBadge(badge, due) {
+  badge.className = "due-badge";
+  if (!due) {
+    badge.classList.add("hidden");
+    return;
+  }
+
+  badge.textContent = due.text;
+  badge.classList.add(due.status);
+}
+
+function showText(element, text) {
+  element.textContent = text || "";
+  element.classList.toggle("hidden", !text);
+}
+
+function describeDoseChange(record, previous) {
+  if (!previous || record.dosageUnit !== previous.dosageUnit) {
+    return null;
+  }
+
+  const current = Number(record.dosageAmount);
+  const before = Number(previous.dosageAmount);
+  if (!Number.isFinite(current) || !Number.isFinite(before) || current === before) {
+    return null;
+  }
+
+  return current > before
+    ? { text: `↑ up from ${formatDosage(previous)}`, direction: "increase" }
+    : { text: `↓ down from ${formatDosage(previous)}`, direction: "decrease" };
+}
+
+function groupLabel(record) {
+  return record.medication
+    ? `${record.medication} · ${record.personName}`
+    : record.personName;
+}
+
+function formatRepeat(days) {
+  if (days === 1) {
+    return "day";
+  }
+
+  if (days % 7 === 0) {
+    const weeks = days / 7;
+    return weeks === 1 ? "week" : `${weeks} weeks`;
+  }
+
+  return `${days} days`;
 }
 
 function normalizeRecord(record) {
@@ -1080,34 +1411,39 @@ function normalizeRecord(record) {
   return {
     id: cleanString(record?.id) || createId(),
     personName: cleanString(record?.personName || record?.name) || "Unnamed",
+    medication: cleanString(record?.medication).slice(0, 60),
     dosageAmount: parsedDose.amount || cleanString(record?.dosageAmount) || "0",
     dosageUnit: normalizeStoredUnit(rawUnit),
+    concentration: normalizeConcentration(record?.concentration),
     lastDate: normalizeDateInput(record?.lastDate || record?.lastHadIt || Date.now()),
+    site: cleanString(record?.site).slice(0, 40),
     repeatDays,
+    notes: cleanString(record?.notes).slice(0, 500),
     createdAt: Number(record?.createdAt) || Date.now(),
     updatedAt: Number(record?.updatedAt) || Date.now(),
   };
 }
 
-function groupByPerson(items) {
+function groupRecords(items) {
   const groups = new Map();
 
-  items.forEach((record) => {
-    const key = record.personName.trim().toLowerCase();
-    const group = groups.get(key) || {
-      personName: record.personName,
-      records: [],
-    };
+  [...items].sort(sortByLastDateDesc).forEach((record) => {
+    const key = groupKey(record);
+    const group = groups.get(key) || { records: [] };
 
     group.records.push(record);
-    group.records.sort(sortByLastDateDesc);
-    group.personName = group.records[0].personName;
     groups.set(key, group);
   });
 
   return [...groups.values()].sort((first, second) => {
     return sortByLastDateDesc(first.records[0], second.records[0]);
   });
+}
+
+function groupKey(record) {
+  return [record.personName, record.medication]
+    .map((value) => cleanString(value).toLowerCase())
+    .join("|");
 }
 
 function getDueInfo(record) {
@@ -1123,6 +1459,7 @@ function getDueInfo(record) {
   const nextDay = startOfDay(nextDate);
   const diffDays = Math.round((nextDay - today) / 86400000);
   const formattedDate = new Intl.DateTimeFormat(undefined, {
+    weekday: "short",
     month: "short",
     day: "numeric",
   }).format(nextDate);
@@ -1130,8 +1467,9 @@ function getDueInfo(record) {
   if (diffDays < 0) {
     const daysLate = Math.abs(diffDays);
     return {
-      text: `${daysLate} day${daysLate === 1 ? "" : "s"} late`,
+      text: `${daysLate} day${daysLate === 1 ? "" : "s"} overdue`,
       status: "overdue",
+      diffDays,
     };
   }
 
@@ -1139,12 +1477,17 @@ function getDueInfo(record) {
     return {
       text: "Due today",
       status: "due-today",
+      diffDays,
     };
   }
 
   return {
-    text: `Due in ${diffDays} day${diffDays === 1 ? "" : "s"} (${formattedDate})`,
+    text:
+      diffDays === 1
+        ? `Due tomorrow (${formattedDate})`
+        : `Due in ${diffDays} days (${formattedDate})`,
     status: "upcoming",
+    diffDays,
   };
 }
 
@@ -1249,24 +1592,55 @@ function sortByLastDateDesc(first, second) {
 }
 
 function setFormMode(mode) {
-  const isEditing = mode === "edit";
-  submitButton.textContent = isEditing ? "Update record" : "Save record";
-  document.querySelector("#form-title").textContent = isEditing
-    ? "Edit record"
-    : "Add a record";
-  cancelEditButton.classList.toggle("hidden", !isEditing);
+  const titles = { add: "Log a dose", next: "Log next dose", edit: "Edit dose" };
+  submitButton.textContent = mode === "edit" ? "Update dose" : "Save dose";
+  formTitle.textContent = titles[mode] || titles.add;
+  cancelEditButton.classList.toggle("hidden", mode === "add");
 }
 
 function resetForm() {
   form.reset();
-  dosageUnitInput.value = "mL";
-  updateCustomUnitVisibility();
+  appliedPresetName = "";
+  unitChosen = false;
+  scheduleChosen = false;
+  dosageUnitInput.value = "mg";
+  doseCalculator.open = false;
+  siteHint.textContent = "";
   setDefaultDate();
   setFormMode("add");
+  updateUnitFields();
+  updateDrawResult();
+  updateScheduleChips();
+  renderMedicationOptions();
 }
 
-function updateCustomUnitVisibility() {
-  customUnitLabel.classList.toggle("hidden", dosageUnitInput.value !== "other");
+function renderMedicationOptions() {
+  const names = new Map();
+  [...records.map((record) => record.medication), ...medicationPresets.map((p) => p.name)]
+    .filter(Boolean)
+    .forEach((name) => {
+      const key = name.toLowerCase();
+      if (!names.has(key)) {
+        names.set(key, name);
+      }
+    });
+
+  medicationOptions.replaceChildren(
+    ...[...names.values()].map((name) => {
+      const option = document.createElement("option");
+      option.value = name;
+      return option;
+    }),
+  );
+}
+
+function normalizeConcentration(value) {
+  const concentration = Number.parseFloat(value);
+  return Number.isFinite(concentration) && concentration > 0 ? concentration : null;
+}
+
+function formatNumber(value, maximumFractionDigits) {
+  return new Intl.NumberFormat(undefined, { maximumFractionDigits }).format(value);
 }
 
 function setDefaultDate() {
