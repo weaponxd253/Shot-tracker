@@ -6,7 +6,7 @@
     <title>Shot Tracker</title>
     <meta
       name="description"
-      content="A simple mobile-friendly tracker for names, dosage amounts, last shot dates, and optional due dates."
+      content="A mobile-friendly tracker for GLP-1 and other injections: doses, schedules, injection sites, and notes."
     />
     <link rel="stylesheet" href="styles.css" />
   </head>
@@ -19,13 +19,21 @@
         </div>
         <div class="total-pill" aria-live="polite">
           <span id="record-count">0</span>
-          <span>saved</span>
+          <span>doses</span>
         </div>
       </section>
 
-      <section class="panel entry-panel" aria-labelledby="form-title">
+      <section class="panel up-next hidden" id="up-next" aria-labelledby="up-next-title">
         <div class="section-heading">
-          <h2 id="form-title">Add a record</h2>
+          <h2 id="up-next-title">Up next</h2>
+          <p>Scheduled doses</p>
+        </div>
+        <ul class="up-next-list" id="up-next-list"></ul>
+      </section>
+
+      <section class="panel entry-panel" id="entry-panel" aria-labelledby="form-title">
+        <div class="section-heading">
+          <h2 id="form-title">Log a dose</h2>
           <button class="ghost-button hidden" id="cancel-edit" type="button">
             Cancel
           </button>
@@ -38,13 +46,26 @@
               id="person-name"
               name="personName"
               type="text"
-              placeholder="Person's name"
+              placeholder="Who is it for?"
               required
             />
           </label>
 
+          <label for="medication">
+            Medication
+            <input
+              id="medication"
+              name="medication"
+              type="text"
+              list="medication-options"
+              maxlength="60"
+              placeholder="Example: Ozempic"
+            />
+          </label>
+          <datalist id="medication-options"></datalist>
+
           <label for="dosage-amount">
-            Dosage amount
+            Dose
             <input
               id="dosage-amount"
               name="dosageAmount"
@@ -52,7 +73,7 @@
               min="0"
               step="any"
               inputmode="decimal"
-              placeholder="Example: 0.5"
+              placeholder="Example: 0.25"
               required
             />
           </label>
@@ -60,8 +81,8 @@
           <label for="dosage-unit">
             Unit
             <select id="dosage-unit" name="dosageUnit" required>
-              <option value="mL">mL</option>
               <option value="mg">mg</option>
+              <option value="mL">mL</option>
               <option value="units">units</option>
               <option value="other">other</option>
             </select>
@@ -78,34 +99,96 @@
             />
           </label>
 
+          <details class="dose-calculator" id="dose-calculator">
+            <summary>Syringe calculator <span>for vials measured in mg/mL</span></summary>
+            <div class="calculator-body">
+              <label for="concentration">
+                Vial strength (mg per mL)
+                <input
+                  id="concentration"
+                  name="concentration"
+                  type="number"
+                  min="0"
+                  step="any"
+                  inputmode="decimal"
+                  placeholder="Example: 2.5"
+                />
+              </label>
+              <output class="draw-result" id="draw-result" for="dosage-amount concentration" aria-live="polite">
+                Enter the dose and vial strength to see how much to draw.
+              </output>
+            </div>
+            <p class="calculator-note">
+              Always double-check the amount with your pharmacist or the medication label.
+            </p>
+          </details>
+
           <label for="last-date">
-            Last had it
+            Date &amp; time given
             <input id="last-date" name="lastDate" type="datetime-local" required />
           </label>
 
-          <label for="repeat-days">
-            Repeat every
-            <input
-              id="repeat-days"
-              name="repeatDays"
-              type="number"
-              min="1"
-              step="1"
-              inputmode="numeric"
-              placeholder="Optional days"
-            />
+          <label for="injection-site">
+            Injection site
+            <select id="injection-site" name="site">
+              <option value="">Not recorded</option>
+              <option>Abdomen – left</option>
+              <option>Abdomen – right</option>
+              <option>Thigh – left</option>
+              <option>Thigh – right</option>
+              <option>Upper arm – left</option>
+              <option>Upper arm – right</option>
+              <option>Buttock – left</option>
+              <option>Buttock – right</option>
+            </select>
+            <span class="field-hint" id="site-hint" aria-live="polite"></span>
+          </label>
+
+          <fieldset class="schedule-field">
+            <legend>Repeats</legend>
+            <div class="schedule-options" id="schedule-options">
+              <button type="button" class="chip" data-days="">No schedule</button>
+              <button type="button" class="chip" data-days="1">Daily</button>
+              <button type="button" class="chip" data-days="7">Weekly</button>
+              <button type="button" class="chip" data-days="14">Every 2 weeks</button>
+              <button type="button" class="chip" data-days="28">Every 4 weeks</button>
+            </div>
+            <label class="inline-label" for="repeat-days">
+              Every
+              <input
+                id="repeat-days"
+                name="repeatDays"
+                type="number"
+                min="1"
+                step="1"
+                inputmode="numeric"
+                placeholder="–"
+              />
+              days
+            </label>
+          </fieldset>
+
+          <label for="notes">
+            Notes
+            <textarea
+              id="notes"
+              name="notes"
+              rows="2"
+              maxlength="500"
+              placeholder="Side effects, how you felt, pen or lot number…"
+            ></textarea>
           </label>
 
           <button class="primary-button" id="submit-button" type="submit">
-            Save record
+            Save dose
           </button>
         </form>
       </section>
 
       <section class="records-tools" aria-label="Record tools">
         <label class="search-label" for="record-search">
-          <span class="sr-only">Search records</span>
-          <input id="record-search" type="search" placeholder="Search by name" />
+          <span class="sr-only">Search by name or medication</span>
+          <input id="record-search" type="search" placeholder="Search name or medication" />
         </label>
         <div class="records-actions">
           <button class="ghost-button" id="export-records" type="button">
@@ -128,12 +211,12 @@
 
       <section class="records" aria-labelledby="records-title">
         <div class="section-heading">
-          <h2 id="records-title">Records</h2>
+          <h2 id="records-title">History</h2>
           <p id="last-updated">No records yet</p>
         </div>
         <div id="empty-state" class="empty-state">
-          <strong>No shots tracked yet.</strong>
-          <span>Add the first record above.</span>
+          <strong>No doses logged yet.</strong>
+          <span>Log the first dose above.</span>
         </div>
         <div id="record-list" class="record-list"></div>
       </section>
@@ -148,27 +231,42 @@
       <article class="person-card">
         <div class="person-header">
           <div>
+            <p class="card-eyebrow"></p>
             <h3></h3>
             <p class="person-summary"></p>
           </div>
-          <span class="time-badge"></span>
+          <span class="due-badge"></span>
         </div>
-        <div class="history-list"></div>
+        <button class="ghost-button log-next-button" type="button">Log next dose</button>
+        <ol class="history-list"></ol>
       </article>
     </template>
 
     <template id="shot-template">
-      <section class="shot-row">
-        <div class="shot-details">
+      <li class="shot-row">
+        <div class="shot-main">
           <p class="dosage"></p>
-          <p class="due-line"></p>
+          <p class="dose-change hidden"></p>
         </div>
         <p class="date-line"></p>
+        <p class="site-line hidden"></p>
+        <p class="notes-line hidden"></p>
         <div class="card-actions">
           <button class="edit-button" type="button">Edit</button>
           <button class="delete-button" type="button">Delete</button>
         </div>
-      </section>
+      </li>
+    </template>
+
+    <template id="up-next-template">
+      <li class="up-next-item">
+        <div>
+          <p class="up-next-name"></p>
+          <p class="up-next-detail"></p>
+        </div>
+        <span class="due-badge"></span>
+        <button class="ghost-button log-next-button" type="button">Log dose</button>
+      </li>
     </template>
 
     <script src="app.js"></script>

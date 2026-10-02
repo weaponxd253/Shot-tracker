@@ -31,7 +31,8 @@ body {
 
 button,
 input,
-select {
+select,
+textarea {
   font: inherit;
 }
 
@@ -114,8 +115,161 @@ h2 {
   box-shadow: var(--shadow);
 }
 
-.entry-panel {
+.entry-panel,
+.up-next {
   padding: 1rem;
+  scroll-margin-top: 1rem;
+}
+
+.up-next {
+  margin-bottom: 1rem;
+}
+
+.up-next-list,
+.history-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.up-next-list {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.up-next-item {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--panel);
+  padding: 0.75rem;
+}
+
+.up-next-item .due-badge {
+  justify-self: start;
+}
+
+.up-next-name {
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.up-next-detail,
+.field-hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.field-hint:empty {
+  display: none;
+}
+
+fieldset {
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+legend {
+  margin-bottom: 0.4rem;
+  padding: 0;
+  color: #2e3c40;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.schedule-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.55rem;
+}
+
+.chip {
+  min-height: 2.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 0.45rem 0.85rem;
+}
+
+.chip:hover {
+  border-color: rgba(15, 123, 114, 0.38);
+}
+
+.chip[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.inline-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.inline-label input {
+  width: 5.5rem;
+  padding: 0.6rem 0.7rem;
+}
+
+.dose-calculator {
+  border: 1px solid var(--line);
+  border-radius: 0.45rem;
+  background: #f7fbfa;
+}
+
+.dose-calculator summary {
+  cursor: pointer;
+  padding: 0.75rem 0.9rem;
+  color: var(--accent-dark);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.dose-calculator summary span {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.calculator-body {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0 0.9rem 0.6rem;
+}
+
+.draw-result {
+  border-radius: 0.45rem;
+  background: #ffffff;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding: 0.7rem 0.8rem;
+}
+
+.draw-result.ready {
+  border-style: solid;
+  border-color: rgba(15, 123, 114, 0.38);
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.calculator-note {
+  padding: 0 0.9rem 0.75rem;
+  color: var(--muted);
+  font-size: 0.8rem;
 }
 
 .section-heading {
@@ -145,7 +299,8 @@ label {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 0.45rem;
@@ -160,8 +315,14 @@ select {
     background 160ms ease;
 }
 
+textarea {
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
 input:focus,
-select:focus {
+select:focus,
+textarea:focus {
   border-color: var(--accent);
   background: #ffffff;
   box-shadow: 0 0 0 0.2rem rgba(15, 123, 114, 0.16);
@@ -169,8 +330,7 @@ select:focus {
 
 .primary-button,
 .ghost-button,
-.danger-button,
-.card-actions button {
+.danger-button {
   min-height: 2.75rem;
   border-radius: 0.45rem;
   border: 1px solid transparent;
@@ -188,16 +348,14 @@ select:focus {
 }
 
 .ghost-button,
-.danger-button,
-.card-actions button {
+.danger-button {
   background: #ffffff;
   border-color: var(--line);
   color: var(--ink);
   padding: 0.7rem 0.9rem;
 }
 
-.ghost-button:hover,
-.edit-button:hover {
+.ghost-button:hover {
   border-color: rgba(15, 123, 114, 0.38);
   color: var(--accent-dark);
 }
@@ -255,7 +413,7 @@ select:focus {
 
 .hidden,
 .empty-state.hidden {
-  display: none;
+  display: none !important;
 }
 
 .record-list {
@@ -275,7 +433,19 @@ select:focus {
 .person-header {
   display: flex;
   justify-content: space-between;
+  align-items: flex-start;
   gap: 0.9rem;
+}
+
+.card-eyebrow {
+  color: var(--accent-dark);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.card-eyebrow:empty {
+  display: none;
 }
 
 .person-card h3 {
@@ -291,28 +461,55 @@ select:focus {
   font-weight: 700;
 }
 
+.due-badge {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #eef6f4;
+  color: var(--accent-dark);
+  font-size: 0.8rem;
+  font-weight: 800;
+  line-height: 1.2;
+  padding: 0.4rem 0.65rem;
+  text-align: center;
+}
+
+.due-badge.overdue {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.due-badge.due-today {
+  background: #fff4d6;
+  color: #7a4e00;
+}
+
 .history-list {
   display: grid;
-  gap: 0.75rem;
+  border-top: 1px solid var(--line);
 }
 
 .shot-row {
   display: grid;
-  gap: 0.7rem;
-  border-top: 1px solid var(--line);
-  padding-top: 0.85rem;
+  grid-template-columns: 1fr auto;
+  gap: 0.2rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0.7rem 0;
 }
 
-.shot-row:first-child {
-  border-top: 0;
-  padding-top: 0;
+.shot-row:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
 }
 
-.shot-details {
+.shot-row > :not(.card-actions) {
+  grid-column: 1;
+}
+
+.shot-main {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.2rem 0.6rem;
 }
 
 .dosage {
@@ -320,59 +517,58 @@ select:focus {
   font-weight: 850;
 }
 
-.time-badge {
-  flex: 0 0 auto;
-  align-self: flex-start;
-  max-width: 8.5rem;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent-dark);
-  font-size: 0.78rem;
-  font-weight: 850;
-  line-height: 1.2;
-  padding: 0.42rem 0.65rem;
-  text-align: center;
-}
-
-.date-line {
-  color: #455359;
-  font-size: 0.95rem;
-}
-
-.due-line {
-  border-radius: 999px;
-  background: #eef6f4;
-  color: var(--accent-dark);
+.dose-change {
   font-size: 0.8rem;
   font-weight: 800;
-  line-height: 1.2;
-  padding: 0.35rem 0.55rem;
-  text-align: right;
+  color: var(--accent-dark);
 }
 
-.due-line.overdue {
-  background: var(--danger-soft);
-  color: var(--danger);
-}
-
-.due-line.due-today {
-  background: #fff4d6;
+.dose-change.decrease {
   color: #7a4e00;
 }
 
-.card-actions {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.6rem;
+.date-line,
+.site-line {
+  color: #455359;
+  font-size: 0.9rem;
 }
 
-.delete-button {
+.notes-line {
+  color: var(--muted);
+  font-size: 0.88rem;
+  font-style: italic;
+  overflow-wrap: anywhere;
+}
+
+.card-actions {
+  grid-column: 2;
+  grid-row: 1 / span 4;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.15rem;
+}
+
+.card-actions button {
+  min-height: 2.5rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: transparent;
+  color: var(--accent-dark);
+  font-size: 0.88rem;
+  font-weight: 800;
+  padding: 0.4rem 0.55rem;
+}
+
+.card-actions button:hover {
+  background: var(--accent-soft);
+}
+
+.card-actions .delete-button {
   color: var(--danger);
 }
 
-.delete-button:hover {
+.card-actions .delete-button:hover {
   background: var(--danger-soft);
-  border-color: #fecdca;
 }
 
 .fine-print {
@@ -405,22 +601,35 @@ select:focus {
   }
 
   label[for="person-name"],
-  label[for="custom-unit"] {
-    grid-column: span 6;
+  label[for="medication"],
+  label[for="last-date"],
+  label[for="injection-site"] {
+    grid-column: span 3;
   }
 
-  label[for="dosage-amount"],
-  label[for="last-date"] {
+  label[for="dosage-amount"] {
     grid-column: span 4;
   }
 
-  label[for="dosage-unit"],
-  label[for="repeat-days"] {
+  label[for="dosage-unit"] {
     grid-column: span 2;
   }
 
-  .primary-button {
+  label[for="custom-unit"],
+  label[for="notes"],
+  .dose-calculator,
+  .schedule-field,
+  form .primary-button {
     grid-column: 1 / -1;
+  }
+
+  .calculator-body {
+    grid-template-columns: 1fr 1.4fr;
+    align-items: end;
+  }
+
+  .up-next-item {
+    grid-template-columns: 1fr auto auto;
   }
 
   .records-tools {
@@ -449,13 +658,11 @@ select:focus {
     grid-template-columns: 1fr;
   }
 
-  .person-header,
-  .shot-details {
+  .person-header {
     display: grid;
   }
 
-  .time-badge {
-    max-width: none;
+  .person-header .due-badge {
     width: fit-content;
   }
 }
