@@ -4,6 +4,8 @@ const form = document.querySelector("#shot-form");
 const personNameInput = document.querySelector("#person-name");
 const dosageAmountInput = document.querySelector("#dosage-amount");
 const dosageUnitInput = document.querySelector("#dosage-unit");
+const customUnitInput = document.querySelector("#custom-unit");
+const customUnitLabel = document.querySelector("#custom-unit-label");
 const lastDateInput = document.querySelector("#last-date");
 const repeatDaysInput = document.querySelector("#repeat-days");
 const submitButton = document.querySelector("#submit-button");
@@ -32,7 +34,10 @@ form.addEventListener("submit", (event) => {
 
   const personName = personNameInput.value.trim();
   const dosageAmount = normalizeAmount(dosageAmountInput.value);
-  const dosageUnit = dosageUnitInput.value;
+  const dosageUnit =
+    dosageUnitInput.value === "other"
+      ? normalizeStoredUnit(customUnitInput.value)
+      : dosageUnitInput.value;
   const lastDate = lastDateInput.value;
   const repeatDays = normalizeRepeatDays(repeatDaysInput.value);
 
@@ -83,6 +88,8 @@ form.addEventListener("submit", (event) => {
   resetForm();
   renderRecords();
 });
+
+dosageUnitInput.addEventListener("change", updateCustomUnitVisibility);
 
 cancelEditButton.addEventListener("click", () => {
   editingId = null;
@@ -137,18 +144,21 @@ importFileInput.addEventListener("change", () => {
         throw new Error("Backup does not contain records.");
       }
 
-      const normalizedRecords = normalizeImportedRecords(importedRecords);
+      const datedRecords = importedRecords.filter(hasValidImportDate);
+      const invalidDateCount = importedRecords.length - datedRecords.length;
+      const normalizedRecords = normalizeImportedRecords(datedRecords);
 
-      if (!normalizedRecords.length) {
+      if (!normalizedRecords.length && !invalidDateCount) {
         throw new Error("Backup is empty.");
       }
 
-      records = mergeRecords(normalizedRecords, records);
+      const merge = mergeRecords(normalizedRecords, records);
+      records = merge.records;
       saveRecords();
       editingId = null;
       resetForm();
       renderRecords();
-      window.alert(`${normalizedRecords.length} record(s) imported.`);
+      window.alert(importSummary({ ...merge, invalidDateCount }));
     } catch {
       window.alert("That file could not be imported.");
     } finally {
@@ -182,6 +192,8 @@ recordList.addEventListener("click", (event) => {
     personNameInput.value = record.personName;
     dosageAmountInput.value = record.dosageAmount;
     dosageUnitInput.value = knownUnit(record.dosageUnit) ? record.dosageUnit : "other";
+    customUnitInput.value = knownUnit(record.dosageUnit) ? "" : record.dosageUnit;
+    updateCustomUnitVisibility();
     lastDateInput.value = normalizeDateInput(record.lastDate);
     repeatDaysInput.value = record.repeatDays || "";
     setFormMode("edit");
@@ -502,6 +514,7 @@ async function unzipTextFiles(bytes) {
 }
 
 async function unzipFiles(bytes) {
+  const decoder = new TextDecoder();
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const directoryOffset = findEndOfCentralDirectory(view);
 
@@ -917,25 +930,82 @@ function mergeRecords(importedRecords, currentRecords) {
     importedRecords.map((record) => [record.id, record]),
   );
   const currentIds = new Set(currentRecords.map((record) => record.id));
+  let updatedCount = 0;
   const mergedRecords = currentRecords.map((record) => {
     const importedRecord = importedById.get(record.id);
-    return importedRecord
-      ? {
-          ...record,
-          ...importedRecord,
-          createdAt: record.createdAt || importedRecord.createdAt,
-          updatedAt: Date.now(),
-        }
-      : record;
+    if (!importedRecord) {
+      return record;
+    }
+
+    updatedCount += 1;
+    return {
+      ...record,
+      ...importedRecord,
+      createdAt: record.createdAt || importedRecord.createdAt,
+      updatedAt: Date.now(),
+    };
   });
+  // Rows without a matching ID (such as a CSV with no Record ID column) are
+  // matched by content so importing the same file twice adds nothing new.
+  const knownKeys = new Set(mergedRecords.map(recordContentKey));
+  let addedCount = 0;
+  let duplicateCount = 0;
 
   importedRecords.forEach((record) => {
-    if (!currentIds.has(record.id)) {
-      mergedRecords.push(record);
+    if (currentIds.has(record.id)) {
+      return;
     }
+
+    const key = recordContentKey(record);
+    if (knownKeys.has(key)) {
+      duplicateCount += 1;
+      return;
+    }
+
+    knownKeys.add(key);
+    mergedRecords.push(record);
+    addedCount += 1;
   });
 
-  return mergedRecords.sort(sortByLastDateDesc);
+  return {
+    records: mergedRecords.sort(sortByLastDateDesc),
+    addedCount,
+    updatedCount,
+    duplicateCount,
+  };
+}
+
+function recordContentKey(record) {
+  return [
+    record.personName.trim().toLowerCase(),
+    Number(record.dosageAmount) || record.dosageAmount,
+    record.dosageUnit.toLowerCase(),
+    record.lastDate,
+  ].join("|");
+}
+
+function hasValidImportDate(record) {
+  const value = record?.lastDate ?? record?.lastHadIt;
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) && isValidDate(value);
+  }
+
+  return Boolean(cleanString(value)) && isValidDate(value);
+}
+
+function importSummary({ addedCount, updatedCount, duplicateCount, invalidDateCount }) {
+  const lines = [`${addedCount} record(s) added, ${updatedCount} updated.`];
+
+  if (duplicateCount) {
+    lines.push(`${duplicateCount} duplicate row(s) skipped.`);
+  }
+
+  if (invalidDateCount) {
+    lines.push(`${invalidDateCount} row(s) skipped because the date was missing or invalid.`);
+  }
+
+  return lines.join("\n");
 }
 
 function renderRecords() {
@@ -1002,14 +1072,16 @@ function renderRecords() {
 
 function normalizeRecord(record) {
   const parsedDose = parseDoseText(record?.dosageAmount);
-  const rawUnit = record?.dosageUnit || parsedDose.unit;
+  const rawUnit = normalizeStoredUnit(record?.dosageUnit) !== "other"
+    ? record.dosageUnit
+    : parsedDose.unit;
   const repeatDays = normalizeRepeatDays(record?.repeatDays);
 
   return {
     id: cleanString(record?.id) || createId(),
     personName: cleanString(record?.personName || record?.name) || "Unnamed",
     dosageAmount: parsedDose.amount || cleanString(record?.dosageAmount) || "0",
-    dosageUnit: knownUnit(rawUnit) ? normalizeUnit(rawUnit) : "other",
+    dosageUnit: normalizeStoredUnit(rawUnit),
     lastDate: normalizeDateInput(record?.lastDate || record?.lastHadIt || Date.now()),
     repeatDays,
     createdAt: Number(record?.createdAt) || Date.now(),
@@ -1078,7 +1150,7 @@ function getDueInfo(record) {
 
 function parseDoseText(value) {
   const rawValue = cleanString(value);
-  const match = rawValue.match(/^(\d+(?:\.\d+)?)\s*(mL|mg|units?)?$/i);
+  const match = rawValue.match(/^(\d+(?:\.\d+)?)\s*([^\d\s.,].*)?$/);
 
   if (!match) {
     return { amount: rawValue, unit: "" };
@@ -1086,7 +1158,7 @@ function parseDoseText(value) {
 
   return {
     amount: match[1],
-    unit: match[2] ? normalizeUnit(match[2]) : "",
+    unit: match[2] ? normalizeStoredUnit(match[2]) : "",
   };
 }
 
@@ -1139,6 +1211,16 @@ function normalizeUnit(value) {
   return "";
 }
 
+// Known units are normalized; anything else is kept as a custom unit.
+// "other" means no unit was given.
+function normalizeStoredUnit(value) {
+  if (knownUnit(value)) {
+    return normalizeUnit(value);
+  }
+
+  return cleanString(value).slice(0, 20) || "other";
+}
+
 function uniqueId(existingIds, preferredId) {
   let id = preferredId || createId();
 
@@ -1178,8 +1260,13 @@ function setFormMode(mode) {
 function resetForm() {
   form.reset();
   dosageUnitInput.value = "mL";
+  updateCustomUnitVisibility();
   setDefaultDate();
   setFormMode("add");
+}
+
+function updateCustomUnitVisibility() {
+  customUnitLabel.classList.toggle("hidden", dosageUnitInput.value !== "other");
 }
 
 function setDefaultDate() {
@@ -1242,8 +1329,17 @@ function parseSpreadsheetDate(value) {
 
   const spreadsheetSerialDate = Number(text);
   if (Number.isFinite(spreadsheetSerialDate) && spreadsheetSerialDate > 20000) {
-    const date = new Date((spreadsheetSerialDate - 25569) * 86400000);
-    return formatDateTimeInput(date);
+    // Serial dates have no time zone, so read the UTC parts as local wall-clock time.
+    const utcDate = new Date(Math.round((spreadsheetSerialDate - 25569) * 86400000));
+    return formatDateTimeInput(
+      new Date(
+        utcDate.getUTCFullYear(),
+        utcDate.getUTCMonth(),
+        utcDate.getUTCDate(),
+        utcDate.getUTCHours(),
+        utcDate.getUTCMinutes(),
+      ),
+    );
   }
 
   const date = new Date(text);
